@@ -8,12 +8,13 @@ import sys
 import time
 import signal
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pytz
 from typing import Dict, List, Optional
 import logging
 from dataclasses import dataclass
 import json
+from trade_logging import CSVLogger, TradeRecord, PerfSnapshot
 
 # Import our custom modules
 from live_data_fetcher import DataManager
@@ -51,6 +52,11 @@ class BotConfig:
     # Monitoring Settings
     update_interval: int = 60  # seconds
     log_level: str = "INFO"
+
+    # CSV logging
+    log_dir: str = "./logs"
+    log_prefix: str = "tsla_bot"
+    session_id: str = ""
     
     # Risk Management
     max_daily_trades: int = 5
@@ -77,9 +83,17 @@ class TSLATradingBot:
         self.total_pnl = 0.0
         self.trade_history = []
         self.last_bar_time = None
-        
+
         # Performance tracking
         self.performance_stats = PerformanceStats()
+
+        # CSV logging
+        self.session_id = self.config.session_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        self.csv_logger = CSVLogger(
+            base_dir=self.config.log_dir,
+            prefix=self.config.log_prefix,
+            session_id=self.session_id,
+        )
         
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -117,7 +131,7 @@ class TSLATradingBot:
             # Initialize IBKR manager
             if self.config.enable_trading:
                 logger.info("Initializing IBKR connection...")
-                self.ibkr_manager = IBKRManager()
+                self.ibkr_manager = IBKRManager(csv_logger=self.csv_logger, session_id=self.session_id)
                 if not self.ibkr_manager.start(
                     host=self.config.ibkr_host,
                     port=self.config.ibkr_port,
@@ -320,17 +334,20 @@ class TSLATradingBot:
         try:
             # Execute the signal
             success = self.ibkr_manager.execute_signal(signal)
-            
+
             if success:
+                # Capture entry price before update for PnL calculation
+                entry_price = self.strategy_engine.position.entry_price if self.strategy_engine.position else None
+
                 # Update strategy engine position
                 executed_price = signal.price  # In real implementation, get actual fill price
                 self.strategy_engine.update_position(signal, executed_price)
-                
+
                 # Record trade
-                self._record_trade(signal, executed_price, real_trade=True)
-                
+                self._record_trade(signal, executed_price, real_trade=True, entry_price=entry_price)
+
                 return True
-            
+
             return False
             
         except Exception as e:
@@ -340,17 +357,20 @@ class TSLATradingBot:
     def _simulate_trade(self, signal):
         """Simulate trade execution"""
         try:
+            # Capture entry price before update for PnL calculation
+            entry_price = self.strategy_engine.position.entry_price if self.strategy_engine.position else None
+
             # Update strategy engine position
             self.strategy_engine.update_position(signal, signal.price)
-            
+
             # Record simulated trade
-            self._record_trade(signal, signal.price, real_trade=False)
-            
+            self._record_trade(signal, signal.price, real_trade=False, entry_price=entry_price)
+
         except Exception as e:
             logger.error(f"Error simulating trade: {e}")
     
-    def _record_trade(self, signal, executed_price: float, real_trade: bool = True):
-        """Record trade in history"""
+    def _record_trade(self, signal, executed_price: float, real_trade: bool = True, entry_price: float = None):
+        """Record trade in history and CSV logs"""
         trade_record = {
             'timestamp': signal.timestamp,
             'signal_type': signal.signal_type.value,
@@ -359,9 +379,9 @@ class TSLATradingBot:
             'reason': signal.reason,
             'real_trade': real_trade
         }
-        
+
         self.trade_history.append(trade_record)
-        
+
         # Add to terminal monitor
         self.terminal_monitor.add_trade(
             signal.signal_type.value,
@@ -369,6 +389,36 @@ class TSLATradingBot:
             executed_price,
             timestamp=signal.timestamp
         )
+
+        # Determine trade side
+        side_map = {
+            SignalType.BUY: "BUY",
+            SignalType.SELL: "SELL",
+            SignalType.PARTIAL_SELL: "PARTIAL_SELL",
+        }
+        side = side_map.get(signal.signal_type, "BUY")
+
+        # Calculate P&L for exits
+        pnl_realized = None
+        if entry_price is not None and signal.signal_type in [SignalType.SELL, SignalType.PARTIAL_SELL]:
+            pnl_realized = round((executed_price - entry_price) * signal.quantity, 2)
+
+        position_after = self.strategy_engine.position.quantity if self.strategy_engine.position else 0
+
+        record = TradeRecord(
+            ts_utc=None,
+            ts_local=None,
+            session_id=self.session_id,
+            symbol=self.config.symbol,
+            side=side,
+            qty=signal.quantity,
+            price=executed_price,
+            reason=signal.reason,
+            pnl_realized=pnl_realized,
+            position_after=position_after,
+            tags="live" if real_trade else "paper",
+        )
+        self.csv_logger.log_trade(record)
     
     def _check_daily_limits(self, signal) -> bool:
         """Check if daily trading limits allow this trade"""
@@ -447,6 +497,26 @@ class TSLATradingBot:
             
             # Update terminal monitor
             self.terminal_monitor.update_performance_stats(self.performance_stats)
+
+            # Log performance snapshot
+            snapshot = PerfSnapshot(
+                ts_utc=None,
+                ts_local=None,
+                session_id=self.session_id,
+                symbol=self.config.symbol,
+                total_trades=self.performance_stats.total_trades,
+                wins=self.performance_stats.winning_trades,
+                losses=self.performance_stats.losing_trades,
+                flat_trades=self.performance_stats.total_trades - self.performance_stats.winning_trades - self.performance_stats.losing_trades,
+                win_rate=(self.performance_stats.win_rate / 100) if self.performance_stats.total_trades > 0 else 0.0,
+                gross_pnl=self.performance_stats.total_pnl,
+                net_pnl=self.performance_stats.total_pnl,
+                max_drawdown=self.performance_stats.max_drawdown,
+                open_position=self.strategy_engine.position.quantity if self.strategy_engine.position else 0,
+                open_unrealized=self.strategy_engine.position.unrealized_pnl if self.strategy_engine.position else 0.0,
+                notes=None,
+            )
+            self.csv_logger.log_performance(snapshot)
             
         except Exception as e:
             logger.error(f"Error updating performance stats: {e}")
@@ -488,7 +558,12 @@ def load_config() -> BotConfig:
     config.ibkr_host = os.getenv('IBKR_HOST', '127.0.0.1')
     config.ibkr_port = int(os.getenv('IBKR_PORT', '7497'))
     config.enable_trading = os.getenv('ENABLE_TRADING', 'false').lower() == 'true'
-    
+
+    # CSV logging
+    config.log_dir = os.getenv('LOG_DIR', './logs')
+    config.log_prefix = os.getenv('LOG_PREFIX', 'tsla_bot')
+    config.session_id = os.getenv('SESSION_ID', '')
+
     return config
 
 def main():

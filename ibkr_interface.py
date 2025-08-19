@@ -34,6 +34,7 @@ except ImportError:
     TickerId = int
 
 from live_strategy_engine import TradingSignal, SignalType
+from trade_logging import TradeRecord
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +73,10 @@ class PortfolioPosition:
 
 class IBKRTradingApp(EWrapper, EClient):
     """IBKR Trading Application"""
-    
-    def __init__(self):
+
+    def __init__(self, parent=None):
         EClient.__init__(self, self)
+        self.parent = parent
         
         # Connection settings
         self.host = "127.0.0.1"
@@ -181,6 +183,21 @@ class IBKRTradingApp(EWrapper, EClient):
     def execDetails(self, reqId: int, contract: Contract, execution: Execution):
         """Execution details"""
         logger.info(f"Execution: {execution.execId} - {execution.shares} shares at ${execution.price}")
+        side = "BUY" if execution.side.upper() == "BOT" else "SELL"
+        if self.parent and getattr(self.parent, "csv_logger", None):
+            rec = TradeRecord(
+                ts_utc=None,
+                ts_local=None,
+                session_id=getattr(self.parent, "session_id", None),
+                symbol=contract.symbol,
+                side=side,
+                qty=int(execution.shares),
+                price=float(execution.price),
+                order_id=str(execution.orderId),
+                trade_id=str(execution.execId),
+                tags="live",
+            )
+            self.parent.csv_logger.log_trade(rec)
     
     def commissionReport(self, commissionReport: CommissionReport):
         """Commission report"""
@@ -352,9 +369,11 @@ class IBKRTradingApp(EWrapper, EClient):
 
 class IBKRManager:
     """High-level IBKR manager for the trading bot"""
-    
-    def __init__(self):
-        self.app = IBKRTradingApp()
+
+    def __init__(self, csv_logger=None, session_id: str = None):
+        self.csv_logger = csv_logger
+        self.session_id = session_id
+        self.app = IBKRTradingApp(parent=self)
         self.api_thread = None
         self.running = False
         
