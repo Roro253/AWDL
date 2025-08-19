@@ -338,6 +338,11 @@ MAX_DAILY_LOSS=500.0
 # Monitoring
 UPDATE_INTERVAL=60
 LOG_LEVEL=INFO
+
+# CSV logging
+LOG_DIR=./logs
+LOG_PREFIX=tsla_bot
+SESSION_ID=
 ```
 
 ## 🚀 Quick Start
