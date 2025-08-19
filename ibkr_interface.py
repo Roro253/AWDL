@@ -34,6 +34,7 @@ except ImportError:
     TickerId = int
 
 from live_strategy_engine import TradingSignal, SignalType
+from trade_logging import TradeRecord
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +74,9 @@ class PortfolioPosition:
 class IBKRTradingApp(EWrapper, EClient):
     """IBKR Trading Application"""
     
-    def __init__(self):
+    def __init__(self, csv_logger=None):
         EClient.__init__(self, self)
+        self.csv_logger = csv_logger
         
         # Connection settings
         self.host = "127.0.0.1"
@@ -181,6 +183,10 @@ class IBKRTradingApp(EWrapper, EClient):
     def execDetails(self, reqId: int, contract: Contract, execution: Execution):
         """Execution details"""
         logger.info(f"Execution: {execution.execId} - {execution.shares} shares at ${execution.price}")
+        if getattr(self, "csv_logger", None):
+            side = "BUY" if execution.side.upper() == "BOT" else "SELL"
+            rec = TradeRecord(ts_utc=None, ts_local=None, session_id=self.csv_logger.session_id, symbol=contract.symbol, side=side, qty=int(execution.shares), price=float(execution.price), order_id=str(execution.orderId), trade_id=str(execution.execId), reason=None, pnl_realized=None, position_after=None, tags=None)
+            self.csv_logger.log_trade(rec)
     
     def commissionReport(self, commissionReport: CommissionReport):
         """Commission report"""
@@ -353,8 +359,8 @@ class IBKRTradingApp(EWrapper, EClient):
 class IBKRManager:
     """High-level IBKR manager for the trading bot"""
     
-    def __init__(self):
-        self.app = IBKRTradingApp()
+    def __init__(self, csv_logger=None):
+        self.app = IBKRTradingApp(csv_logger=csv_logger)
         self.api_thread = None
         self.running = False
         
