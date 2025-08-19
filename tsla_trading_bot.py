@@ -250,9 +250,13 @@ class TSLATradingBot:
             
             # Analyze market conditions
             market_conditions = self.strategy_engine.analyze_market_conditions(data_with_indicators)
-            
-            # Update terminal with market conditions
-            self.terminal_monitor.update_market_status(market_conditions)
+
+            # Combine with market status (e.g., market hours) from data manager
+            market_status = self.data_manager.get_market_status()
+            market_status.update(market_conditions)
+
+            # Update terminal with combined market status
+            self.terminal_monitor.update_market_status(market_status)
             
             # Get current price
             current_price = self.data_manager.current_price or market_conditions.get('current_price', 0)
