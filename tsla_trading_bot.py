@@ -8,7 +8,7 @@ import sys
 import time
 import signal
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pytz
 from typing import Dict, List, Optional
 import logging
@@ -20,6 +20,7 @@ from live_data_fetcher import DataManager
 from live_strategy_engine import LiveStrategyEngine, StrategyParams, SignalType
 from ibkr_interface import IBKRManager
 from terminal_monitor import TerminalMonitor, PerformanceStats
+from trade_logging import CSVLogger
 
 # Configure logging
 logging.basicConfig(
@@ -47,6 +48,11 @@ class BotConfig:
     symbol: str = "TSLA"
     max_position_size: int = 10
     enable_trading: bool = True  # Set to False for paper/simulation mode
+
+    # Logging
+    log_dir: str = "./logs"
+    log_prefix: str = "tsla_bot"
+    session_id: Optional[str] = None
     
     # Monitoring Settings
     update_interval: int = 60  # seconds
@@ -80,6 +86,10 @@ class TSLATradingBot:
         
         # Performance tracking
         self.performance_stats = PerformanceStats()
+
+        # CSV logging
+        self.session_id = self.config.session_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        self.csv_logger = CSVLogger(base_dir=self.config.log_dir, prefix=self.config.log_prefix, session_id=self.session_id)
         
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -117,7 +127,7 @@ class TSLATradingBot:
             # Initialize IBKR manager
             if self.config.enable_trading:
                 logger.info("Initializing IBKR connection...")
-                self.ibkr_manager = IBKRManager()
+                self.ibkr_manager = IBKRManager(csv_logger=self.csv_logger)
                 if not self.ibkr_manager.start(
                     host=self.config.ibkr_host,
                     port=self.config.ibkr_port,
@@ -488,6 +498,9 @@ def load_config() -> BotConfig:
     config.ibkr_host = os.getenv('IBKR_HOST', '127.0.0.1')
     config.ibkr_port = int(os.getenv('IBKR_PORT', '7497'))
     config.enable_trading = os.getenv('ENABLE_TRADING', 'false').lower() == 'true'
+    config.log_dir = os.getenv('LOG_DIR', './logs')
+    config.log_prefix = os.getenv('LOG_PREFIX', 'tsla_bot')
+    config.session_id = os.getenv('SESSION_ID')
     
     return config
 
