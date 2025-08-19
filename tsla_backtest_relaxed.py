@@ -37,7 +37,7 @@ def manual_adx(df: pd.DataFrame, length: int) -> pd.Series:
     atr_len = atr(df, length)
     plusDI = 100 * rma(pd.Series(plusDM, index=df.index), length) / atr_len.replace(0, np.nan)
     minusDI = 100 * rma(pd.Series(minusDM, index=df.index), length) / atr_len.replace(0, np.nan)
-    dx = 100 * (plusDI.minus(minusDI).abs() / (plusDI + minusDI).replace(0, np.nan))
+    dx = 100 * (plusDI.sub(minusDI).abs() / (plusDI + minusDI).replace(0, np.nan))
     return rma(dx.fillna(0), length)
 
 def macd_hist(close: pd.Series, fast=12, slow=26, sig=9) -> Tuple[pd.Series, pd.Series, pd.Series]:
