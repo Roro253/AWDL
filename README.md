@@ -46,7 +46,7 @@ cd tsla-trading-bot
 nano .env
 
 # Add your Polygon API key
-POLYGON_API_KEY=your_actual_api_key_here
+POLYGON_API_KEY=JlAQap9qJ8F8VrfChiPmYpticVo6SMPO
 ```
 
 ### 3. Start Trading
@@ -322,7 +322,7 @@ Add your API keys and settings:
 
 ```env
 # Polygon.io API Key (Required)
-POLYGON_API_KEY=your_polygon_api_key_here
+POLYGON_API_KEY=JlAQap9qJ8F8VrfChiPmYpticVo6SMPO
 
 # IBKR Settings
 IBKR_HOST=127.0.0.1

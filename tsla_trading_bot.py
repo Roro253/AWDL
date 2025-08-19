@@ -480,7 +480,7 @@ def load_config() -> BotConfig:
     config = BotConfig()
     
     # Load from environment variables
-    config.polygon_api_key = os.getenv('POLYGON_API_KEY', '')
+    config.polygon_api_key = os.getenv('POLYGON_API_KEY', 'JlAQap9qJ8F8VrfChiPmYpticVo6SMPO')
     config.ibkr_host = os.getenv('IBKR_HOST', '127.0.0.1')
     config.ibkr_port = int(os.getenv('IBKR_PORT', '7497'))
     config.enable_trading = os.getenv('ENABLE_TRADING', 'false').lower() == 'true'
@@ -496,9 +496,7 @@ def main():
     config = load_config()
     
     if not config.polygon_api_key:
-        print("Error: POLYGON_API_KEY environment variable not set")
-        print("Please set your Polygon API key:")
-        print("export POLYGON_API_KEY='your_api_key_here'")
+        print("Error: Polygon API key not set")
         return 1
     
     # Create and start bot

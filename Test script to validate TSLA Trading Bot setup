@@ -10,6 +10,9 @@ import importlib
 from datetime import datetime
 import logging
 
+# Default API key
+DEFAULT_POLYGON_API_KEY = 'JlAQap9qJ8F8VrfChiPmYpticVo6SMPO'
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -85,7 +88,8 @@ def test_environment_variables():
     
     print("\nRequired variables:")
     for var, description in required_vars.items():
-        value = os.getenv(var)
+        default = DEFAULT_POLYGON_API_KEY if var == 'POLYGON_API_KEY' else ''
+        value = os.getenv(var, default)
         if value:
             # Mask API keys for security
             display_value = f"{value[:8]}..." if len(value) > 8 else "***"
@@ -108,7 +112,7 @@ def test_data_connection():
     """Test Polygon.io data connection"""
     print("\n📊 Testing data connection...")
     
-    polygon_api_key = os.getenv('POLYGON_API_KEY')
+    polygon_api_key = os.getenv('POLYGON_API_KEY', DEFAULT_POLYGON_API_KEY)
     if not polygon_api_key:
         print("❌ Cannot test data connection - POLYGON_API_KEY not set")
         return False
