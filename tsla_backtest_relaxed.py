@@ -1,11 +1,12 @@
 
 
 import math
+import os
 from dataclasses import dataclass
 from typing import Optional, Tuple, List
 import numpy as np
 import pandas as pd
-import yfinance as yf
+import requests
 import pytz
 
 # =========================
@@ -82,6 +83,18 @@ def day_of_week(idx: pd.DatetimeIndex, tz='US/Eastern') -> pd.Series:
 
 def week_number(idx: pd.DatetimeIndex, tz='US/Eastern') -> pd.Series:
     return idx.tz_convert(tz).isocalendar().week.astype(int)
+
+def _parse_polygon_interval(interval: str) -> Tuple[int, str]:
+    """Convert interval like '5m' to (multiplier, timespan) for Polygon API."""
+    unit = interval[-1].lower()
+    multiplier = int(interval[:-1])
+    if unit == 'm':
+        return multiplier, 'minute'
+    if unit == 'h':
+        return multiplier, 'hour'
+    if unit == 'd':
+        return multiplier, 'day'
+    raise ValueError(f"Unsupported interval: {interval}")
 
 # =========================
 # Parameters
@@ -184,35 +197,62 @@ def load_data(params: Params, csv_path: Optional[str] = None) -> pd.DataFrame:
             df.index = df.index.tz_convert('US/Eastern')
         df = df[['Open','High','Low','Close','Volume']]
         return df
-    # yfinance path (limited!)
+    # Polygon path
     end = pd.Timestamp.now(tz='US/Eastern') if params.end is None else pd.Timestamp(params.end, tz='US/Eastern')
     start = pd.Timestamp(params.start, tz='US/Eastern')
-    data = yf.download(params.symbol, start=start.tz_convert('UTC').tz_localize(None), end=end.tz_convert('UTC').tz_localize(None), interval=params.interval, auto_adjust=False, progress=False)
-    if data.empty:
-        raise RuntimeError("yfinance returned no data. Try another date range or use a CSV.")
-    data = data.tz_localize('UTC').tz_convert('US/Eastern')
-    data = data.rename(columns=str.title)[['Open','High','Low','Close','Volume']]
-    return data
+    multiplier, timespan = _parse_polygon_interval(params.interval)
+    api_key = os.getenv('POLYGON_API_KEY')
+    if not api_key:
+        raise RuntimeError("POLYGON_API_KEY environment variable not set")
+    url = (
+        f"https://api.polygon.io/v2/aggs/ticker/{params.symbol}/range/"
+        f"{multiplier}/{timespan}/{int(start.tz_convert('UTC').timestamp() * 1000)}/"
+        f"{int(end.tz_convert('UTC').timestamp() * 1000)}"
+    )
+    q = {'adjusted': 'true', 'sort': 'asc', 'limit': 50000, 'apiKey': api_key}
+    resp = requests.get(url, params=q)
+    resp.raise_for_status()
+    data = resp.json()
+    if data.get('status') != 'OK' or not data.get('results'):
+        raise RuntimeError("Polygon returned no data. Try another date range or check API key.")
+    records = []
+    for r in data['results']:
+        ts = pd.Timestamp(r['t'], unit='ms', tz='UTC').tz_convert('US/Eastern')
+        records.append({'Datetime': ts, 'Open': r['o'], 'High': r['h'], 'Low': r['l'], 'Close': r['c'], 'Volume': r['v']})
+    df = pd.DataFrame.from_records(records).set_index('Datetime')
+    return df[['Open', 'High', 'Low', 'Close', 'Volume']]
 
 def load_wadl_series(params: Params, base_index: pd.DatetimeIndex) -> Optional[pd.Series]:
     if not params.useWADLfilter or not params.wadl_symbol:
         return None
     try:
-        wadl = yf.download(params.wadl_symbol, start=base_index[0].tz_convert('UTC').tz_localize(None),
-                           end=base_index[-1].tz_convert('UTC').tz_localize(None), interval=params.interval, progress=False)
-        if wadl.empty:
-            # try daily as fallback
-            wadl = yf.download(params.wadl_symbol, start=base_index[0].date(), end=base_index[-1].date(), interval="1d", progress=False)
-        if wadl.empty:
-            print("WADL symbol not found on Yahoo; breadth filter will be skipped.")
+        multiplier, timespan = _parse_polygon_interval(params.interval)
+        api_key = os.getenv('POLYGON_API_KEY')
+        if not api_key:
+            print("POLYGON_API_KEY not set; breadth filter will be skipped.")
             return None
-        wadl = wadl.tz_localize('UTC').tz_convert('US/Eastern')
-        wadl = wadl['Close'].rename('WADL')
-        # resample to requested TF for breadth filter
+        start = base_index[0]
+        end = base_index[-1]
+        url = (
+            f"https://api.polygon.io/v2/aggs/ticker/{params.wadl_symbol}/range/"
+            f"{multiplier}/{timespan}/{int(start.tz_convert('UTC').timestamp() * 1000)}/"
+            f"{int(end.tz_convert('UTC').timestamp() * 1000)}"
+        )
+        q = {'adjusted': 'true', 'sort': 'asc', 'limit': 50000, 'apiKey': api_key}
+        resp = requests.get(url, params=q)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get('status') != 'OK' or not data.get('results'):
+            print("WADL symbol not found on Polygon; breadth filter will be skipped.")
+            return None
+        records = []
+        for r in data['results']:
+            ts = pd.Timestamp(r['t'], unit='ms', tz='UTC').tz_convert('US/Eastern')
+            records.append({'Datetime': ts, 'Close': r['c']})
+        wadl = pd.DataFrame.from_records(records).set_index('Datetime')['Close'].rename('WADL')
         wadl_df = wadl.to_frame()
-        wadl_htf = resample_htf(wadl_df.rename(columns={'WADL':'Close'}), params.wadl_tf)
+        wadl_htf = resample_htf(wadl_df.rename(columns={'WADL': 'Close'}), params.wadl_tf)
         wadl_htf = wadl_htf['Close']
-        # align to base index
         return wadl_htf.reindex(base_index, method='ffill')
     except Exception as e:
         print(f"WADL fetch error: {e}. Breadth filter will be skipped.")
