@@ -246,11 +246,8 @@ class DataManager:
 
 def test_data_fetcher():
     """Test the data fetcher functionality"""
-    # You'll need to set your Polygon API key
-    api_key = os.getenv('POLYGON_API_KEY')
-    if not api_key:
-        print("Please set POLYGON_API_KEY environment variable")
-        return
+    # Use configured Polygon API key
+    api_key = os.getenv('POLYGON_API_KEY', 'JlAQap9qJ8F8VrfChiPmYpticVo6SMPO')
     
     # Initialize data manager
     data_manager = DataManager(api_key, "TSLA")
