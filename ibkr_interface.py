@@ -24,7 +24,10 @@ try:
 except ImportError:
     print("Warning: IBKR API not installed. Install with: pip install ibapi")
     # Create dummy classes for development
-    class EClient: pass
+    class EClient:
+        def isConnected(self):
+            return False
+
     class EWrapper: pass
     class Contract: pass
     class Order: pass
@@ -104,29 +107,24 @@ class IBKRTradingApp(EWrapper, EClient):
     def connect_to_ibkr(self, host: str = "127.0.0.1", port: int = 7496, client_id: int = 1) -> bool:
         """Connect to IBKR TWS or Gateway"""
         try:
+            # Prevent reconnect attempts if already connected
+            if self.connected or self.isConnected():
+                logger.info("Already connected to IBKR")
+                return True
+
             self.host = host
             self.port = port
             self.client_id = client_id
-            
-            logger.info(f"Connecting to IBKR at {host}:{port} with client ID {client_id}")
+
+            logger.info(
+                f"Connecting to IBKR at {host}:{port} with client ID {client_id}"
+            )
+            # Establish socket connection. The connection will be fully
+            # acknowledged asynchronously in `connectAck` once the API loop is
+            # running.
             self.connect(host, port, client_id)
-            
-            # Wait for connection
-            timeout = 10
-            start_time = time.time()
-            while not self.connected and (time.time() - start_time) < timeout:
-                time.sleep(0.1)
-            
-            if self.connected:
-                logger.info("Successfully connected to IBKR")
-                # Request next valid order ID
-                self.reqIds(-1)
-                time.sleep(1)  # Wait for order ID
-                return True
-            else:
-                logger.error("Failed to connect to IBKR within timeout")
-                return False
-                
+            return True
+
         except Exception as e:
             logger.error(f"Error connecting to IBKR: {e}")
             return False
@@ -134,10 +132,11 @@ class IBKRTradingApp(EWrapper, EClient):
     def disconnect_from_ibkr(self):
         """Disconnect from IBKR"""
         try:
-            if self.connected:
+            if self.isConnected():
+                logger.info("Disconnecting from IBKR")
                 self.disconnect()
-                self.connected = False
-                logger.info("Disconnected from IBKR")
+            self.connected = False
+            logger.info("Disconnected from IBKR")
         except Exception as e:
             logger.error(f"Error disconnecting from IBKR: {e}")
     
@@ -387,15 +386,17 @@ class IBKRManager:
         self.session_id = session_id
         self.app = IBKRTradingApp(parent=self)
         self.api_thread = None
+        self.monitor_thread = None
         self.running = False
         
     def start(self, host: str = "127.0.0.1", port: int = 7496, client_id: int = 1) -> bool:
         """Start IBKR connection"""
         try:
-            # Connect to IBKR
+            # Establish socket connection
             if not self.app.connect_to_ibkr(host, port, client_id):
                 return False
 
+ codex/review-historical-bars-fetching-logic
             # Start API thread
             self.api_thread = threading.Thread(target=self.app.run, daemon=True)
             self.api_thread.start()
@@ -414,25 +415,91 @@ class IBKRManager:
             # Request initial portfolio updates
             self.app.request_portfolio_updates()
 
+
+            # Start API processing thread
+            self.api_thread = threading.Thread(target=self.app.run, daemon=True)
+            self.api_thread.start()
+
+            # Wait for connection acknowledgement
+            timeout = time.time() + 10
+            while not self.app.connected and time.time() < timeout:
+                time.sleep(0.1)
+
+            if not self.app.connected:
+                logger.error("Failed to connect to IBKR within timeout")
+                return False
+
+            # Request next valid order ID
+            self.app.reqIds(-1)
+            time.sleep(1)
+
+            # Request initial portfolio updates
+            self.app.request_portfolio_updates()
+
+            # Start connection monitor thread
+            self.running = True
+            self.monitor_thread = threading.Thread(
+                target=self._monitor_connection, daemon=True
+            )
+            self.monitor_thread.start()
+
+ main
             logger.info("IBKR Manager started successfully")
             return True
-            
+
         except Exception as e:
             logger.error(f"Error starting IBKR Manager: {e}")
             return False
-    
+
+    def _monitor_connection(self):
+        """Background thread to maintain IBKR connection."""
+        while self.running:
+            try:
+                if not self.app.isConnected():
+                    logger.warning(
+                        "IBKR connection lost. Attempting to reconnect..."
+                    )
+                    if self.app.connect_to_ibkr(
+                        self.app.host, self.app.port, self.app.client_id
+                    ):
+                        if not self.api_thread or not self.api_thread.is_alive():
+                            self.api_thread = threading.Thread(
+                                target=self.app.run, daemon=True
+                            )
+                            self.api_thread.start()
+
+                        timeout = time.time() + 10
+                        while not self.app.connected and time.time() < timeout:
+                            time.sleep(0.1)
+
+                        if self.app.connected:
+                            self.app.reqIds(-1)
+                            logger.info("Reconnected to IBKR")
+                        else:
+                            logger.error("Reconnection attempt failed")
+                    else:
+                        logger.error("Reconnection attempt failed")
+                time.sleep(5)
+            except Exception as e:
+                logger.error(f"Error in connection monitor: {e}")
+                time.sleep(5)
+
     def stop(self):
         """Stop IBKR connection"""
         try:
             self.running = False
-            if self.app.connected:
+
+            if self.monitor_thread and self.monitor_thread.is_alive():
+                self.monitor_thread.join(timeout=5)
+
+            if self.app.connected or self.app.isConnected():
                 self.app.disconnect_from_ibkr()
-            
+
             if self.api_thread and self.api_thread.is_alive():
                 self.api_thread.join(timeout=5)
-            
+
             logger.info("IBKR Manager stopped")
-            
+
         except Exception as e:
             logger.error(f"Error stopping IBKR Manager: {e}")
     
