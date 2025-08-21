@@ -80,7 +80,7 @@ class IBKRTradingApp(EWrapper, EClient):
         
         # Connection settings
         self.host = "127.0.0.1"
-        self.port = 7497  # TWS Paper Trading port (7496 for live)
+        self.port = 7496  # TWS Live Trading port (7497 for paper)
         self.client_id = 1
         
         # Order management
@@ -101,7 +101,7 @@ class IBKRTradingApp(EWrapper, EClient):
         self.order_callback: Optional[Callable] = None
         self.position_callback: Optional[Callable] = None
         
-    def connect_to_ibkr(self, host: str = "127.0.0.1", port: int = 7497, client_id: int = 1) -> bool:
+    def connect_to_ibkr(self, host: str = "127.0.0.1", port: int = 7496, client_id: int = 1) -> bool:
         """Connect to IBKR TWS or Gateway"""
         try:
             self.host = host
@@ -377,7 +377,7 @@ class IBKRManager:
         self.api_thread = None
         self.running = False
         
-    def start(self, host: str = "127.0.0.1", port: int = 7497, client_id: int = 1) -> bool:
+    def start(self, host: str = "127.0.0.1", port: int = 7496, client_id: int = 1) -> bool:
         """Start IBKR connection"""
         try:
             # Connect to IBKR
@@ -446,7 +446,7 @@ def test_ibkr_connection():
     
     try:
         # Start connection (paper trading port)
-        if manager.start(port=7497):
+        if manager.start(port=7496):
             print("✓ Connected to IBKR successfully")
             
             # Get account info
@@ -463,7 +463,7 @@ def test_ibkr_connection():
             
         else:
             print("✗ Failed to connect to IBKR")
-            print("Make sure TWS or Gateway is running on port 7497")
+            print("Make sure TWS or Gateway is running on port 7496")
             
     except Exception as e:
         print(f"✗ Error testing IBKR: {e}")

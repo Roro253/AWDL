@@ -80,8 +80,9 @@ def test_environment_variables():
     
     optional_vars = {
         'IBKR_HOST': 'Interactive Brokers host (default: 127.0.0.1)',
-        'IBKR_PORT': 'Interactive Brokers port (default: 7497)',
-        'ENABLE_TRADING': 'Enable live trading (default: false)',
+        'IBKR_PORT': 'Interactive Brokers port (default: 7496)',
+        'ENABLE_TRADING': 'Enable live trading (default: true)',
+        'MAX_POSITION_SIZE': 'Maximum position size per trade (default: 3)',
     }
     
     all_set = True
@@ -140,7 +141,7 @@ def test_ibkr_connection():
     """Test IBKR connection (optional)"""
     print("\n🏦 Testing IBKR connection...")
     
-    enable_trading = os.getenv('ENABLE_TRADING', 'false').lower() == 'true'
+    enable_trading = os.getenv('ENABLE_TRADING', 'true').lower() == 'true'
     
     if not enable_trading:
         print("⚠️  Trading disabled - Skipping IBKR connection test")
@@ -154,7 +155,7 @@ def test_ibkr_connection():
         
         # Try to connect (with short timeout)
         host = os.getenv('IBKR_HOST', '127.0.0.1')
-        port = int(os.getenv('IBKR_PORT', '7497'))
+        port = int(os.getenv('IBKR_PORT', '7496'))
         
         print(f"   Attempting connection to {host}:{port}...")
         

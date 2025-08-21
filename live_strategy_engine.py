@@ -60,8 +60,8 @@ class Position:
 class StrategyParams:
     """Live trading strategy parameters (relaxed for real trading)"""
     # Position sizing
-    shares_per_trade: int = 10
-    max_position_size: int = 10
+    shares_per_trade: int = 3
+    max_position_size: int = 3
     
     # Risk management
     commission_rate: float = 0.001  # 0.1%

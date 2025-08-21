@@ -392,10 +392,10 @@ def test_terminal_monitor():
     
     monitor.update_position_status({
         'status': 'LONG',
-        'quantity': 10,
+        'quantity': 3,
         'entry_price': 210.00,
         'current_price': 215.50,
-        'unrealized_pnl': 55.00,
+        'unrealized_pnl': 16.50,
         'stop_loss': 205.00,
         'take_profit': 220.00,
         'bars_in_trade': 15
@@ -403,7 +403,7 @@ def test_terminal_monitor():
     
     # Add some test activity
     monitor.add_signal("BUY", "Pullback + UT Bot signal")
-    monitor.add_trade("BUY", 10, 210.00)
+    monitor.add_trade("BUY", 3, 210.00)
     monitor.add_alert("INFO", "Bot started successfully")
     
     # Update performance stats

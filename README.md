@@ -117,10 +117,10 @@ ADX: 28.3
 POSITION STATUS
 -------------------------
 Position: LONG
-Quantity: 10 shares
+Quantity: 3 shares
 Entry Price: $210.00
 Current Price: $215.50
-Unrealized P&L: $55.00
+Unrealized P&L: $16.50
 Stop Loss: $205.00
 Take Profit: $220.00
 
@@ -135,7 +135,7 @@ Current Streak: 2
 ## ⚙️ Configuration Options
 
 ### Trading Parameters
-- **Position Size**: 10 shares per trade (configurable)
+- **Position Size**: 3 shares per trade (configurable)
 - **Risk Management**: ATR-based stops and targets
 - **Daily Limits**: Max trades and loss limits
 - **Strategy**: Multi-indicator confirmation system
@@ -149,7 +149,7 @@ Current Streak: 2
 ## 🔒 Security & Risk Management
 
 ### Built-in Protections
-1. **Position Limits**: Maximum 10 shares per trade
+1. **Position Limits**: Maximum 3 shares per trade
 2. **Daily Limits**: Configurable trade and loss limits
 3. **Stop Losses**: Automatic risk management
 4. **Emergency Stops**: Account-level protection
@@ -157,8 +157,8 @@ Current Streak: 2
 
 ### Recommended Settings for Beginners
 ```env
-ENABLE_TRADING=false        # Start with paper trading
-MAX_POSITION_SIZE=10        # Small position size
+ENABLE_TRADING=true        # Enable live trading
+MAX_POSITION_SIZE=3        # Small position size
 MAX_DAILY_TRADES=3          # Conservative trade limit
 MAX_DAILY_LOSS=200.0        # Reasonable loss limit
 ```
@@ -326,12 +326,12 @@ POLYGON_API_KEY=JlAQap9qJ8F8VrfChiPmYpticVo6SMPO
 
 # IBKR Settings
 IBKR_HOST=127.0.0.1
-IBKR_PORT=7497  # 7497 for paper trading, 7496 for live trading
+IBKR_PORT=7496  # 7496 for live trading, 7497 for paper trading
 IBKR_CLIENT_ID=1
 
 # Trading Settings
-ENABLE_TRADING=false  # Set to true for live trading
-MAX_POSITION_SIZE=10
+ENABLE_TRADING=true  # Set to false for paper trading
+MAX_POSITION_SIZE=3
 MAX_DAILY_TRADES=5
 MAX_DAILY_LOSS=500.0
 
@@ -359,7 +359,7 @@ SESSION_ID=
    - In TWS: File → Global Configuration → API → Settings
    - Enable "Enable ActiveX and Socket Clients"
    - Add "127.0.0.1" to trusted IPs
-   - Set Socket port to 7497 (paper) or 7496 (live)
+   - Set Socket port to 7496 (live) or 7497 (paper)
 
 3. **Login to Paper Trading Account** (recommended for testing)
 
@@ -419,10 +419,10 @@ ADX: 28.3
 POSITION STATUS
 -------------------------
 Position: LONG
-Quantity: 10 shares
+Quantity: 3 shares
 Entry Price: $210.00
 Current Price: $215.50
-Unrealized P&L: $55.00
+Unrealized P&L: $16.50
 Stop Loss: $205.00
 Take Profit: $220.00
 Time in Trade: 15 bars
@@ -467,8 +467,8 @@ The bot uses a sophisticated multi-indicator strategy. Key parameters can be adj
 @dataclass
 class StrategyParams:
     # Position sizing
-    shares_per_trade: int = 10
-    max_position_size: int = 10
+    shares_per_trade: int = 3
+    max_position_size: int = 3
     
     # Risk management
     stop_atr: float = 1.0          # Stop loss in ATR multiples
@@ -490,7 +490,7 @@ class StrategyParams:
 
 Built-in risk management features:
 
-- **Position Sizing**: Fixed 10 shares per trade (configurable)
+- **Position Sizing**: Fixed 3 shares per trade (configurable)
 - **Stop Losses**: ATR-based dynamic stops
 - **Take Profits**: Partial profit taking with trailing stops
 - **Daily Limits**: Maximum trades and loss limits per day
@@ -504,10 +504,10 @@ Always test with paper trading first:
 
 ```bash
 # Set in .env file
-ENABLE_TRADING=false
+ENABLE_TRADING=true
 
 # Or set environment variable
-export ENABLE_TRADING=false
+export ENABLE_TRADING=true
 python tsla_trading_bot.py
 ```
 
@@ -568,7 +568,7 @@ tsla-trading-bot/
 1. **"Connection refused" to IBKR**:
    - Ensure TWS/Gateway is running
    - Check API settings are enabled
-   - Verify port number (7497 for paper, 7496 for live)
+   - Verify port number (7496 for live, 7497 for paper)
 
 2. **"Invalid API key" for Polygon**:
    - Verify your API key is correct

@@ -41,12 +41,12 @@ class BotConfig:
     
     # IBKR Settings
     ibkr_host: str = "127.0.0.1"
-    ibkr_port: int = 7497  # Paper trading port
+    ibkr_port: int = 7496  # Live trading port
     ibkr_client_id: int = 1
     
     # Trading Settings
     symbol: str = "TSLA"
-    max_position_size: int = 10
+    max_position_size: int = 3
     enable_trading: bool = True  # Set to False for paper/simulation mode
     
     # Monitoring Settings
@@ -419,6 +419,11 @@ class TSLATradingBot:
             tags="live" if real_trade else "paper",
         )
         self.csv_logger.log_trade(record)
+
+        # Immediately update position display after recording trade
+        self.terminal_monitor.update_position_status(
+            self.strategy_engine.get_position_summary()
+        )
     
     def _check_daily_limits(self, signal) -> bool:
         """Check if daily trading limits allow this trade"""
@@ -556,8 +561,9 @@ def load_config() -> BotConfig:
     # Load from environment variables
     config.polygon_api_key = os.getenv('POLYGON_API_KEY', 'JlAQap9qJ8F8VrfChiPmYpticVo6SMPO')
     config.ibkr_host = os.getenv('IBKR_HOST', '127.0.0.1')
-    config.ibkr_port = int(os.getenv('IBKR_PORT', '7497'))
-    config.enable_trading = os.getenv('ENABLE_TRADING', 'false').lower() == 'true'
+    config.ibkr_port = int(os.getenv('IBKR_PORT', '7496'))
+    config.enable_trading = os.getenv('ENABLE_TRADING', 'true').lower() == 'true'
+    config.max_position_size = int(os.getenv('MAX_POSITION_SIZE', str(config.max_position_size)))
 
     # CSV logging
     config.log_dir = os.getenv('LOG_DIR', './logs')
