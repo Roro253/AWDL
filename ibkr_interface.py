@@ -396,7 +396,6 @@ class IBKRManager:
             if not self.app.connect_to_ibkr(host, port, client_id):
                 return False
 
- codex/review-historical-bars-fetching-logic
             # Start API thread
             self.api_thread = threading.Thread(target=self.app.run, daemon=True)
             self.api_thread.start()
@@ -412,23 +411,6 @@ class IBKRManager:
                 logger.error("IBKR connection not established")
                 return False
 
-            # Request initial portfolio updates
-            self.app.request_portfolio_updates()
-
-
-            # Start API processing thread
-            self.api_thread = threading.Thread(target=self.app.run, daemon=True)
-            self.api_thread.start()
-
-            # Wait for connection acknowledgement
-            timeout = time.time() + 10
-            while not self.app.connected and time.time() < timeout:
-                time.sleep(0.1)
-
-            if not self.app.connected:
-                logger.error("Failed to connect to IBKR within timeout")
-                return False
-
             # Request next valid order ID
             self.app.reqIds(-1)
             time.sleep(1)
@@ -437,13 +419,11 @@ class IBKRManager:
             self.app.request_portfolio_updates()
 
             # Start connection monitor thread
-            self.running = True
             self.monitor_thread = threading.Thread(
                 target=self._monitor_connection, daemon=True
             )
             self.monitor_thread.start()
 
- main
             logger.info("IBKR Manager started successfully")
             return True
 
