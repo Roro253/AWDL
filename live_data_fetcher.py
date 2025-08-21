@@ -55,13 +55,22 @@ class PolygonDataFetcher:
             limit: Maximum number of bars to fetch
             from_date: Start date in YYYY-MM-DD format
         """
+        # Use US/Eastern timezone to align with market hours
+        now = datetime.now(pytz.timezone('US/Eastern'))
         if not from_date:
-            # Default to 30 days ago
-            from_date = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-        
-        to_date = datetime.now().strftime('%Y-%m-%d')
-        
-        url = f"{self.base_url}/v2/aggs/ticker/{symbol}/range/{multiplier}/{timespan}/{from_date}/{to_date}"
+            # Default to 30 days ago from current time
+            from_date = (now - timedelta(days=30)).strftime('%Y-%m-%d')
+
+        to_date = now.strftime('%Y-%m-%d')
+
+        logger.debug(
+            f"Requesting historical bars for {symbol} from {from_date} to {to_date}"
+        )
+
+        url = (
+            f"{self.base_url}/v2/aggs/ticker/{symbol}/range/"
+            f"{multiplier}/{timespan}/{from_date}/{to_date}"
+        )
         
         params = {
             'adjusted': 'true',
@@ -80,7 +89,13 @@ class PolygonDataFetcher:
                 return []
             
             bars = []
-            for result in data.get('results', []):
+            results = data.get('results', [])
+            if not results:
+                logger.warning(
+                    f"No historical bars returned for {symbol} between {from_date} and {to_date}"
+                )
+                return []
+            for result in results:
                 # Convert timestamp from milliseconds to datetime
                 timestamp = datetime.fromtimestamp(result['t'] / 1000, tz=pytz.timezone('US/Eastern'))
                 

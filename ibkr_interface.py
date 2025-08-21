@@ -146,6 +146,12 @@ class IBKRTradingApp(EWrapper, EClient):
         """Connection acknowledgment"""
         logger.info("Connection acknowledged by IBKR")
         self.connected = True
+        try:
+            # Ensure we receive live market data
+            self.reqMarketDataType(1)
+            logger.info("Requested live market data subscription")
+        except Exception as e:
+            logger.error(f"Error requesting market data type: {e}")
     
     def connectionClosed(self):
         """Connection closed"""
@@ -219,8 +225,13 @@ class IBKRTradingApp(EWrapper, EClient):
         else:
             self.portfolio_positions[symbol].position = int(position)
             self.portfolio_positions[symbol].avg_cost = avgCost
-        
+
         logger.info(f"Position update: {symbol} - {position} shares at avg cost ${avgCost}")
+        if self.position_callback:
+            try:
+                self.position_callback(self.portfolio_positions[symbol])
+            except Exception as e:
+                logger.error(f"Error in position callback: {e}")
     
     def accountSummary(self, reqId: int, account: str, tag: str, value: str, currency: str):
         """Account summary update"""
@@ -359,6 +370,7 @@ class IBKRTradingApp(EWrapper, EClient):
     def request_portfolio_updates(self):
         """Request portfolio and account updates"""
         if self.connected:
+            logger.info("Requesting portfolio and account updates")
             self.reqPositions()
             self.reqAccountSummary(9001, "All", "TotalCashValue,BuyingPower")
     
@@ -383,18 +395,25 @@ class IBKRManager:
             # Connect to IBKR
             if not self.app.connect_to_ibkr(host, port, client_id):
                 return False
-            
+
             # Start API thread
             self.api_thread = threading.Thread(target=self.app.run, daemon=True)
             self.api_thread.start()
             self.running = True
-            
-            # Wait for connection to stabilize
-            time.sleep(2)
-            
+
+            # Wait for stable connection
+            timeout = 10
+            start_time = time.time()
+            while not self.app.connected and (time.time() - start_time) < timeout:
+                time.sleep(0.1)
+
+            if not self.app.connected:
+                logger.error("IBKR connection not established")
+                return False
+
             # Request initial portfolio updates
             self.app.request_portfolio_updates()
-            
+
             logger.info("IBKR Manager started successfully")
             return True
             
