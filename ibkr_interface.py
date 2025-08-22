@@ -12,6 +12,10 @@ from dataclasses import dataclass
 from enum import Enum
 import queue
 
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 7496  # 7497 for paper trading
+DEFAULT_CLIENT_ID = 1
+
 # IBKR API imports
 try:
     from ibapi.client import EClient
@@ -74,95 +78,144 @@ class PortfolioPosition:
     unrealized_pnl: float
     realized_pnl: float
 
-class IBKRTradingApp(EWrapper, EClient):
-    """IBKR Trading Application"""
+class IBKRInterface(EWrapper, EClient):
+    """IBKR Trading Application with resilient connection handling"""
 
-    def __init__(self, parent=None):
-        EClient.__init__(self, self)
+    def __init__(
+        self,
+        parent=None,
+        host: str = DEFAULT_HOST,
+        port: int = DEFAULT_PORT,
+        client_id: int = DEFAULT_CLIENT_ID,
+    ):
+        EWrapper.__init__(self)
+        EClient.__init__(self, wrapper=self)
         self.parent = parent
-        
-        # Connection settings
-        self.host = "127.0.0.1"
-        self.port = 7496  # TWS Live Trading port (7497 for paper)
-        self.client_id = 1
-        
+
+        # Persisted connection settings
+        self.host = host
+        self.port = port
+        self.client_id = client_id
+
+        self._reconnect_backoff = 2.0  # seconds
+        self._max_backoff = 60.0
+        self._reconnect_timer = None
+        self._connected_once = False
+
         # Order management
         self.next_order_id = None
         self.orders: Dict[int, OrderInfo] = {}
         self.order_queue = queue.Queue()
-        
+
         # Portfolio tracking
         self.portfolio_positions: Dict[str, PortfolioPosition] = {}
         self.account_value = 0.0
         self.buying_power = 0.0
-        
+
         # Connection status
         self.connected = False
         self.connection_lock = threading.Lock()
-        
+
         # Callbacks
         self.order_callback: Optional[Callable] = None
         self.position_callback: Optional[Callable] = None
-        
-    def connect_to_ibkr(self, host: str = "127.0.0.1", port: int = 7496, client_id: int = 1) -> bool:
-        """Connect to IBKR TWS or Gateway"""
-        try:
-            # Prevent reconnect attempts if already connected
-            if self.connected or self.isConnected():
-                logger.info("Already connected to IBKR")
-                return True
 
-            self.host = host
-            self.port = port
-            self.client_id = client_id
+    # ---- connection lifecycle ----
 
-            logger.info(
-                f"Connecting to IBKR at {host}:{port} with client ID {client_id}"
+    def connect_and_start(self):
+        """Public entry: connect and request live market data type."""
+        self.connect_safe()
+
+    def connect_safe(self):
+        if not isinstance(self.host, str) or not self.host:
+            logger.error(
+                "IBKR host is invalid or missing (got %r). Set IBKR_HOST env or config.",
+                self.host,
             )
-            # Establish socket connection. The connection will be fully
-            # acknowledged asynchronously in `connectAck` once the API loop is
-            # running.
-            self.connect(host, port, client_id)
-            return True
+            return
+        if not isinstance(self.port, int):
+            try:
+                self.port = int(self.port)
+            except Exception:
+                logger.error(
+                    "IBKR port is invalid or missing (got %r). Set IBKR_PORT env or config.",
+                    self.port,
+                )
+                return
 
+        logger.info(
+            "Connecting to IBKR at %s:%s with client ID %s",
+            self.host,
+            self.port,
+            self.client_id,
+        )
+        try:
+            super().connect(self.host, self.port, self.client_id)
+            self._connected_once = True
         except Exception as e:
-            logger.error(f"Error connecting to IBKR: {e}")
-            return False
-    
-    def disconnect_from_ibkr(self):
-        """Disconnect from IBKR"""
+            logger.error("Exception starting socket to IBKR: %s", e)
+            self.schedule_reconnect()
+            return
+
+        thread = threading.Thread(target=self.run, name="IBKR-Reader", daemon=True)
+        thread.start()
+
+    def schedule_reconnect(self):
+        if self._reconnect_timer and self._reconnect_timer.is_alive():
+            return
+
+        backoff = min(self._reconnect_backoff, self._max_backoff)
+        logger.warning("IBKR connection lost. Attempting to reconnect in %.1fs...", backoff)
+
+        def _reconnect():
+            try:
+                self.disconnect_safe()
+            except Exception:
+                pass
+            self.connect_safe()
+
+        self._reconnect_timer = threading.Timer(backoff, _reconnect)
+        self._reconnect_timer.daemon = True
+        self._reconnect_timer.start()
+        self._reconnect_backoff = min(backoff * 1.5, self._max_backoff)
+
+    def disconnect_safe(self):
         try:
             if self.isConnected():
-                logger.info("Disconnecting from IBKR")
                 self.disconnect()
-            self.connected = False
-            logger.info("Disconnected from IBKR")
+                logger.info("Connection to IBKR closed")
         except Exception as e:
-            logger.error(f"Error disconnecting from IBKR: {e}")
-    
-    # EWrapper callback methods
+            logger.debug("disconnect_safe exception: %s", e)
+        finally:
+            self.connected = False
+
+    # ---- ibapi callbacks ----
+
     def connectAck(self):
-        """Connection acknowledgment"""
+        super().connectAck()
         logger.info("Connection acknowledged by IBKR")
         self.connected = True
         try:
-            # Ensure we receive live market data
             self.reqMarketDataType(1)
             logger.info("Requested live market data subscription")
+            self.reqIds(-1)
         except Exception as e:
-            logger.error(f"Error requesting market data type: {e}")
-    
+            logger.error("Failed to request market data type / IDs: %s", e)
+
     def connectionClosed(self):
-        """Connection closed"""
-        logger.info("Connection to IBKR closed")
+        logger.warning("IBKR reports connectionClosed()")
         self.connected = False
-    
-    def error(self, reqId: TickerId, errorCode: int, errorString: str):
-        """Error handling"""
-        if errorCode in [2104, 2106, 2158]:  # Informational messages
-            logger.info(f"IBKR Info [{errorCode}]: {errorString}")
+        self.schedule_reconnect()
+
+    def error(self, reqId: TickerId, errorCode: int, errorString: str, advancedOrderRejectJson=""):
+        if errorCode in (1100, 1101, 1102):
+            logger.warning("TWS connectivity event %s: %s", errorCode, errorString)
+        elif errorCode in (10167,):
+            logger.warning("Market data farm connection is OK: %s", errorString)
         else:
-            logger.error(f"IBKR Error [{errorCode}]: {errorString}")
+            logger.error("IB error: reqId=%s code=%s msg=%s", reqId, errorCode, errorString)
+        if errorCode in (1100, 1300, 1301):
+            self.schedule_reconnect()
     
     def nextValidId(self, orderId: OrderId):
         """Receive next valid order ID"""
@@ -384,24 +437,18 @@ class IBKRManager:
     def __init__(self, csv_logger=None, session_id: str = None):
         self.csv_logger = csv_logger
         self.session_id = session_id
-        self.app = IBKRTradingApp(parent=self)
-        self.api_thread = None
-        self.monitor_thread = None
+        self.app = IBKRInterface(parent=self)
         self.running = False
-        
-    def start(self, host: str = "127.0.0.1", port: int = 7496, client_id: int = 1) -> bool:
+
+    def start(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, client_id: int = DEFAULT_CLIENT_ID) -> bool:
         """Start IBKR connection"""
         try:
-            # Establish socket connection
-            if not self.app.connect_to_ibkr(host, port, client_id):
-                return False
+            self.app.host = host
+            self.app.port = port
+            self.app.client_id = client_id
 
-            # Start API thread
-            self.api_thread = threading.Thread(target=self.app.run, daemon=True)
-            self.api_thread.start()
-            self.running = True
+            self.app.connect_and_start()
 
-            # Wait for stable connection
             timeout = 10
             start_time = time.time()
             while not self.app.connected and (time.time() - start_time) < timeout:
@@ -411,19 +458,8 @@ class IBKRManager:
                 logger.error("IBKR connection not established")
                 return False
 
-            # Request next valid order ID
-            self.app.reqIds(-1)
-            time.sleep(1)
-
-            # Request initial portfolio updates
             self.app.request_portfolio_updates()
-
-            # Start connection monitor thread
-            self.monitor_thread = threading.Thread(
-                target=self._monitor_connection, daemon=True
-            )
-            self.monitor_thread.start()
-
+            self.running = True
             logger.info("IBKR Manager started successfully")
             return True
 
@@ -431,75 +467,33 @@ class IBKRManager:
             logger.error(f"Error starting IBKR Manager: {e}")
             return False
 
-    def _monitor_connection(self):
-        """Background thread to maintain IBKR connection."""
-        while self.running:
-            try:
-                if not self.app.isConnected():
-                    logger.warning(
-                        "IBKR connection lost. Attempting to reconnect..."
-                    )
-                    if self.app.connect_to_ibkr(
-                        self.app.host, self.app.port, self.app.client_id
-                    ):
-                        if not self.api_thread or not self.api_thread.is_alive():
-                            self.api_thread = threading.Thread(
-                                target=self.app.run, daemon=True
-                            )
-                            self.api_thread.start()
-
-                        timeout = time.time() + 10
-                        while not self.app.connected and time.time() < timeout:
-                            time.sleep(0.1)
-
-                        if self.app.connected:
-                            self.app.reqIds(-1)
-                            logger.info("Reconnected to IBKR")
-                        else:
-                            logger.error("Reconnection attempt failed")
-                    else:
-                        logger.error("Reconnection attempt failed")
-                time.sleep(5)
-            except Exception as e:
-                logger.error(f"Error in connection monitor: {e}")
-                time.sleep(5)
-
     def stop(self):
         """Stop IBKR connection"""
         try:
             self.running = False
-
-            if self.monitor_thread and self.monitor_thread.is_alive():
-                self.monitor_thread.join(timeout=5)
-
-            if self.app.connected or self.app.isConnected():
-                self.app.disconnect_from_ibkr()
-
-            if self.api_thread and self.api_thread.is_alive():
-                self.api_thread.join(timeout=5)
-
+            self.app.disconnect_safe()
             logger.info("IBKR Manager stopped")
 
         except Exception as e:
             logger.error(f"Error stopping IBKR Manager: {e}")
-    
+
     def execute_signal(self, signal: TradingSignal) -> bool:
         """Execute trading signal"""
         if not self.running or not self.app.connected:
             logger.error("IBKR not connected")
             return False
-        
+
         order_id = self.app.execute_signal(signal)
         return order_id is not None
-    
+
     def get_position(self, symbol: str = "TSLA") -> Optional[PortfolioPosition]:
         """Get current position"""
         return self.app.get_position(symbol)
-    
+
     def get_account_info(self) -> Dict[str, any]:
         """Get account information"""
         return self.app.get_account_info()
-    
+
     def is_connected(self) -> bool:
         """Check if connected to IBKR"""
         return self.app.connected
