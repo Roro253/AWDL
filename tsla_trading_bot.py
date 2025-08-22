@@ -19,7 +19,7 @@ from trade_logging import CSVLogger, TradeRecord, PerfSnapshot
 # Import our custom modules
 from live_data_fetcher import DataManager
 from live_strategy_engine import LiveStrategyEngine, StrategyParams, SignalType
-from ibkr_interface import IBKRManager
+from ibkr_interface import IBKRInterface
 from terminal_monitor import TerminalMonitor, PerformanceStats
 
 # Configure logging
@@ -74,7 +74,7 @@ class TSLATradingBot:
         # Initialize components
         self.data_manager = None
         self.strategy_engine = None
-        self.ibkr_manager = None
+        self.ib = None
         self.terminal_monitor = None
         
         # Trading state
@@ -131,12 +131,14 @@ class TSLATradingBot:
             # Initialize IBKR manager
             if self.config.enable_trading:
                 logger.info("Initializing IBKR connection...")
-                self.ibkr_manager = IBKRManager(csv_logger=self.csv_logger, session_id=self.session_id)
-                if not self.ibkr_manager.start(
+                self.ib = IBKRInterface(
                     host=self.config.ibkr_host,
                     port=self.config.ibkr_port,
-                    client_id=self.config.ibkr_client_id
-                ):
+                    client_id=self.config.ibkr_client_id,
+                    csv_logger=self.csv_logger,
+                    session_id=self.session_id,
+                )
+                if not self.ib.connect_and_start():
                     logger.error("Failed to connect to IBKR")
                     return False
             else:
@@ -209,8 +211,8 @@ class TSLATradingBot:
             self.terminal_monitor.add_alert("INFO", "Trading bot shutting down...")
         
         # Close IBKR connection
-        if self.ibkr_manager:
-            self.ibkr_manager.stop()
+        if self.ib:
+            self.ib.stop()
         
         # Stop terminal monitor
         if self.terminal_monitor:
@@ -312,7 +314,7 @@ class TSLATradingBot:
                 return
             
             # Execute trade if trading is enabled
-            if self.config.enable_trading and self.ibkr_manager:
+            if self.config.enable_trading and self.ib:
                 success = self._execute_trade(signal)
                 if success:
                     self.daily_trades += 1
@@ -333,7 +335,7 @@ class TSLATradingBot:
         """Execute actual trade through IBKR"""
         try:
             # Execute the signal
-            success = self.ibkr_manager.execute_signal(signal)
+            success = self.ib.execute_signal(signal)
 
             if success:
                 # Capture entry price before update for PnL calculation

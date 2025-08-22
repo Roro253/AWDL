@@ -149,17 +149,17 @@ def test_ibkr_connection():
         return True
     
     try:
-        from ibkr_interface import IBKRManager
-        
-        manager = IBKRManager()
-        
+        from ibkr_interface import IBKRInterface
+
         # Try to connect (with short timeout)
         host = os.getenv('IBKR_HOST', '127.0.0.1')
         port = int(os.getenv('IBKR_PORT', '7496'))
+
+        manager = IBKRInterface(host=host, port=port)
         
         print(f"   Attempting connection to {host}:{port}...")
-        
-        if manager.start(host=host, port=port):
+
+        if manager.connect_and_start():
             print("✅ IBKR connection successful")
             manager.stop()
             return True

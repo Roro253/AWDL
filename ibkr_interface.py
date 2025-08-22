@@ -3,6 +3,7 @@ Interactive Brokers (IBKR) Trading Interface
 Handles order execution and portfolio management for the TSLA trading bot
 """
 
+import os
 import time
 import threading
 from datetime import datetime, timedelta
@@ -504,38 +505,72 @@ class IBKRManager:
         """Check if connected to IBKR"""
         return self.app.connected
 
+
+class IBKRInterface:
+    """Simplified interface for establishing and using an IBKR connection."""
+
+    def __init__(self, host: str = None, port: int = None, client_id: int = None,
+                 csv_logger=None, session_id: str = None):
+        # Use environment variables or defaults if parameters not provided
+        self.host = host or os.getenv("IBKR_HOST", "127.0.0.1")
+        self.port = int(port or os.getenv("IBKR_PORT", 7496))
+        self.client_id = int(client_id or os.getenv("IBKR_CLIENT_ID", 1))
+
+        self._manager = IBKRManager(csv_logger=csv_logger, session_id=session_id)
+
+    def connect_and_start(self) -> bool:
+        """Connect to IBKR and start background threads."""
+        return self._manager.start(host=self.host, port=self.port, client_id=self.client_id)
+
+    def stop(self):
+        """Stop the IBKR connection."""
+        self._manager.stop()
+
+    # Delegate commonly used methods to the underlying manager
+    def execute_signal(self, signal: TradingSignal) -> bool:
+        return self._manager.execute_signal(signal)
+
+    def get_position(self, symbol: str = "TSLA") -> Optional[PortfolioPosition]:
+        return self._manager.get_position(symbol)
+
+    def get_account_info(self) -> Dict[str, any]:
+        return self._manager.get_account_info()
+
+    def is_connected(self) -> bool:
+        return self._manager.is_connected()
+
 def test_ibkr_connection():
     """Test IBKR connection"""
     print("Testing IBKR connection...")
-    
-    manager = IBKRManager()
-    
+
+    ib = IBKRInterface()
+
     try:
         # Start connection (paper trading port)
-        if manager.start(port=7496):
+        if ib.connect_and_start():
             print("✓ Connected to IBKR successfully")
-            
+
             # Get account info
-            account_info = manager.get_account_info()
+            account_info = ib.get_account_info()
             print(f"✓ Account value: ${account_info['account_value']:,.2f}")
             print(f"✓ Buying power: ${account_info['buying_power']:,.2f}")
-            
+
             # Check TSLA position
-            position = manager.get_position("TSLA")
+            position = ib.get_position("TSLA")
             if position:
                 print(f"✓ TSLA position: {position.position} shares")
             else:
                 print("✓ No TSLA position")
-            
+
         else:
             print("✗ Failed to connect to IBKR")
             print("Make sure TWS or Gateway is running on port 7496")
-            
+
     except Exception as e:
         print(f"✗ Error testing IBKR: {e}")
-        
+
     finally:
-        manager.stop()
+        ib.stop()
 
 if __name__ == "__main__":
     test_ibkr_connection()
