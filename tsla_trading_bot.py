@@ -4,6 +4,17 @@ Main application that integrates all components for real-time trading
 """
 
 import os
+try:
+    from dotenv import load_dotenv
+    load_dotenv(override=False)  # .env fills only missing vars; shell env wins
+except Exception:
+    pass  # optional: not fatal
+
+# read config with correct precedence
+IBKR_HOST = os.getenv("IBKR_HOST", "127.0.0.1")
+IBKR_PORT = int(os.getenv("IBKR_PORT", "7496"))
+IBKR_CLIENT_ID = int(os.getenv("IBKR_CLIENT_ID", "1"))
+
 import sys
 import time
 import signal
@@ -47,9 +58,9 @@ class BotConfig:
     polygon_api_key: str = ""
     
     # IBKR Settings
-    ibkr_host: str = "127.0.0.1"
-    ibkr_port: int = 7496  # Live trading port
-    ibkr_client_id: int = 1
+    ibkr_host: str = IBKR_HOST
+    ibkr_port: int = IBKR_PORT  # Live trading port
+    ibkr_client_id: int = IBKR_CLIENT_ID
     
     # Trading Settings
     symbol: str = "TSLA"
@@ -147,9 +158,9 @@ class TSLATradingBot:
                 )
 
                 self.ib = IBKRInterfaceCompat(
-                    host=self.config.ibkr_host,
-                    port=self.config.ibkr_port,
-                    client_id=self.config.ibkr_client_id,
+                    host=IBKR_HOST,
+                    port=IBKR_PORT,
+                    client_id=IBKR_CLIENT_ID,
                     csv_logger=self.csv_logger,
                     session_id=self.session_id,
                 )
@@ -577,8 +588,9 @@ def load_config() -> BotConfig:
     
     # Load from environment variables
     config.polygon_api_key = os.getenv('POLYGON_API_KEY', 'JlAQap9qJ8F8VrfChiPmYpticVo6SMPO')
-    config.ibkr_host = os.getenv('IBKR_HOST', '127.0.0.1')
-    config.ibkr_port = int(os.getenv('IBKR_PORT', '7496'))
+    config.ibkr_host = IBKR_HOST
+    config.ibkr_port = IBKR_PORT
+    config.ibkr_client_id = IBKR_CLIENT_ID
     config.enable_trading = os.getenv('ENABLE_TRADING', 'true').lower() == 'true'
     config.max_position_size = int(os.getenv('MAX_POSITION_SIZE', str(config.max_position_size)))
 

@@ -45,11 +45,6 @@ from live_strategy_engine import TradingSignal, SignalType
 
 logger = logging.getLogger("ibkr_interface")
 
-DEFAULT_HOST = os.getenv("IBKR_HOST", "127.0.0.1")
-# 7496=LIVE TWS, 7497=PAPER TWS
-DEFAULT_PORT = int(os.getenv("IBKR_PORT", "7497"))
-DEFAULT_CLIENT_ID = int(os.getenv("IBKR_CLIENT_ID", "1"))
-
 class OrderStatus(Enum):
     PENDING = "PENDING"
     SUBMITTED = "SUBMITTED"
@@ -88,9 +83,9 @@ class IBKRInterface(EWrapper, EClient):
 
     def __init__(
         self,
-        host: str = DEFAULT_HOST,
-        port: int = DEFAULT_PORT,
-        client_id: int = DEFAULT_CLIENT_ID,
+        host: str,
+        port: int,
+        client_id: int,
         parent=None,
         **kwargs,
     ):
@@ -106,6 +101,13 @@ class IBKRInterface(EWrapper, EClient):
         self.host = host
         self.port = int(port)
         self.client_id = int(client_id)
+
+        logger.info(
+            "Connecting to IBKR at %s:%s with client ID %s",
+            self.host,
+            self.port,
+            self.client_id,
+        )
 
         self._reconnect_backoff = 2.0  # seconds
         self._max_backoff = 60.0
@@ -526,9 +528,11 @@ class IBKRInterfaceLegacy:
     def __init__(self, host: str = None, port: int = None, client_id: int = None,
                  csv_logger=None, session_id: str = None):
         # Use environment variables or defaults if parameters not provided
-        self.host = host or os.getenv("IBKR_HOST", "127.0.0.1")
-        self.port = int(port or os.getenv("IBKR_PORT", 7496))
-        self.client_id = int(client_id or os.getenv("IBKR_CLIENT_ID", 1))
+        self.host = host if host is not None else os.getenv("IBKR_HOST", "127.0.0.1")
+        self.port = int(port) if port is not None else int(os.getenv("IBKR_PORT", 7496))
+        self.client_id = (
+            int(client_id) if client_id is not None else int(os.getenv("IBKR_CLIENT_ID", 1))
+        )
 
         self._manager = IBKRManager(csv_logger=csv_logger, session_id=session_id)
 
