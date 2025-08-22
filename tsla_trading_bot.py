@@ -19,8 +19,15 @@ from trade_logging import CSVLogger, TradeRecord, PerfSnapshot
 # Import our custom modules
 from live_data_fetcher import DataManager
 from live_strategy_engine import LiveStrategyEngine, StrategyParams, SignalType
-from ibkr_interface import IBKRInterface
+from ibkr_interface import IBKRInterface as _IBKRInterface
 from terminal_monitor import TerminalMonitor, PerformanceStats
+
+
+class IBKRInterfaceCompat(_IBKRInterface):
+    def __init__(self, *args, **kwargs):
+        # Remove legacy kwargs that old constructors don't accept
+        kwargs.pop("parent", None)
+        super().__init__(*args, **kwargs)
 
 # Configure logging
 logging.basicConfig(
@@ -131,7 +138,15 @@ class TSLATradingBot:
             # Initialize IBKR manager
             if self.config.enable_trading:
                 logger.info("Initializing IBKR connection...")
-                self.ib = IBKRInterface(
+                import inspect
+                import ibkr_interface
+
+                logging.getLogger(__name__).info(
+                    "Using IBKRInterface from %s",
+                    inspect.getsourcefile(ibkr_interface.IBKRInterface),
+                )
+
+                self.ib = IBKRInterfaceCompat(
                     host=self.config.ibkr_host,
                     port=self.config.ibkr_port,
                     client_id=self.config.ibkr_client_id,

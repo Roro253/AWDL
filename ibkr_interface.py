@@ -520,8 +520,8 @@ class IBKRManager:
         return self.app.connected
 
 
-class IBKRInterface:
-    """Simplified interface for establishing and using an IBKR connection."""
+class IBKRInterfaceLegacy:
+    """Simplified legacy interface for establishing and using an IBKR connection."""
 
     def __init__(self, host: str = None, port: int = None, client_id: int = None,
                  csv_logger=None, session_id: str = None):
@@ -557,7 +557,7 @@ def test_ibkr_connection():
     """Test IBKR connection"""
     print("Testing IBKR connection...")
 
-    ib = IBKRInterface()
+    ib = IBKRInterfaceLegacy()
 
     try:
         # Start connection (paper trading port)
