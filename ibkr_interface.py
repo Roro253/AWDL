@@ -3,6 +3,7 @@ Interactive Brokers (IBKR) Trading Interface
 Handles order execution and portfolio management for the TSLA trading bot
 """
 
+import os
 import time
 import threading
 from datetime import datetime, timedelta
@@ -39,7 +40,12 @@ except ImportError:
 from live_strategy_engine import TradingSignal, SignalType
 from trade_logging import TradeRecord
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ibkr_interface")
+
+DEFAULT_HOST = os.getenv("IBKR_HOST", "127.0.0.1")
+# 7496=LIVE TWS, 7497=PAPER TWS
+DEFAULT_PORT = int(os.getenv("IBKR_PORT", "7497"))
+DEFAULT_CLIENT_ID = int(os.getenv("IBKR_CLIENT_ID", "1"))
 
 class OrderStatus(Enum):
     PENDING = "PENDING"
@@ -82,9 +88,9 @@ class IBKRTradingApp(EWrapper, EClient):
         self.parent = parent
         
         # Connection settings
-        self.host = "127.0.0.1"
-        self.port = 7496  # TWS Live Trading port (7497 for paper)
-        self.client_id = 1
+        self.host = DEFAULT_HOST
+        self.port = DEFAULT_PORT
+        self.client_id = DEFAULT_CLIENT_ID
         
         # Order management
         self.next_order_id = None
@@ -104,7 +110,12 @@ class IBKRTradingApp(EWrapper, EClient):
         self.order_callback: Optional[Callable] = None
         self.position_callback: Optional[Callable] = None
         
-    def connect_to_ibkr(self, host: str = "127.0.0.1", port: int = 7496, client_id: int = 1) -> bool:
+    def connect_to_ibkr(
+        self,
+        host: str = DEFAULT_HOST,
+        port: int = DEFAULT_PORT,
+        client_id: int = DEFAULT_CLIENT_ID,
+    ) -> bool:
         """Connect to IBKR TWS or Gateway"""
         try:
             # Prevent reconnect attempts if already connected
