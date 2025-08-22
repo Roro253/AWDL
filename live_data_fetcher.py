@@ -42,8 +42,8 @@ class PolygonDataFetcher:
             'Authorization': f'Bearer {api_key}'
         })
         
-    def get_historical_bars(self, symbol: str, timespan: str = "minute", 
-                           multiplier: int = 5, limit: int = 5000,
+    def get_historical_bars(self, symbol: str, timespan: str = "minute",
+                           multiplier: int = 5, limit: int = 50000,
                            from_date: Optional[str] = None) -> List[BarData]:
         """
         Fetch historical bars for initial data loading
@@ -75,7 +75,7 @@ class PolygonDataFetcher:
         params = {
             'adjusted': 'true',
             'sort': 'asc',
-            'limit': limit
+            'limit': 50000
         }
         
         try:
