@@ -42,7 +42,6 @@ except ImportError:
     TickerId = int
 
 from live_strategy_engine import TradingSignal, SignalType
-from trade_logging import TradeRecord
 
 logger = logging.getLogger("ibkr_interface")
 
@@ -89,19 +88,24 @@ class IBKRInterface(EWrapper, EClient):
 
     def __init__(
         self,
-        parent=None,
         host: str = DEFAULT_HOST,
         port: int = DEFAULT_PORT,
         client_id: int = DEFAULT_CLIENT_ID,
+        parent=None,
+        **kwargs,
     ):
+        """Initialize the IBKR interface.
+
+        Accepts a legacy ``parent`` argument and arbitrary keyword arguments
+        without using them to maintain backward compatibility.
+        """
         EWrapper.__init__(self)
         EClient.__init__(self, wrapper=self)
-        self.parent = parent
 
         # Persisted connection settings
         self.host = host
-        self.port = port
-        self.client_id = client_id
+        self.port = int(port)
+        self.client_id = int(client_id)
 
         self._reconnect_backoff = 2.0  # seconds
         self._max_backoff = 60.0
@@ -270,22 +274,9 @@ class IBKRInterface(EWrapper, EClient):
     
     def execDetails(self, reqId: int, contract: Contract, execution: Execution):
         """Execution details"""
-        logger.info(f"Execution: {execution.execId} - {execution.shares} shares at ${execution.price}")
-        side = "BUY" if execution.side.upper() == "BOT" else "SELL"
-        if self.parent and getattr(self.parent, "csv_logger", None):
-            rec = TradeRecord(
-                ts_utc=None,
-                ts_local=None,
-                session_id=getattr(self.parent, "session_id", None),
-                symbol=contract.symbol,
-                side=side,
-                qty=int(execution.shares),
-                price=float(execution.price),
-                order_id=str(execution.orderId),
-                trade_id=str(execution.execId),
-                tags="live",
-            )
-            self.parent.csv_logger.log_trade(rec)
+        logger.info(
+            f"Execution: {execution.execId} - {execution.shares} shares at ${execution.price}"
+        )
     
     def commissionReport(self, commissionReport: CommissionReport):
         """Commission report"""
