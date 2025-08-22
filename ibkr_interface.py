@@ -97,7 +97,6 @@ class IBKRInterface(EWrapper, EClient):
         EWrapper.__init__(self)
         EClient.__init__(self, wrapper=self)
         self.parent = parent
- codex/persist-settings-and-improve-reconnect-logic
 
         # Persisted connection settings
         self.host = host
@@ -109,14 +108,6 @@ class IBKRInterface(EWrapper, EClient):
         self._reconnect_timer = None
         self._connected_once = False
 
-
-        
-        # Connection settings
-        self.host = DEFAULT_HOST
-        self.port = DEFAULT_PORT
-        self.client_id = DEFAULT_CLIENT_ID
-        
- main
         # Order management
         self.next_order_id = None
         self.orders: Dict[int, OrderInfo] = {}
@@ -134,7 +125,6 @@ class IBKRInterface(EWrapper, EClient):
         # Callbacks
         self.order_callback: Optional[Callable] = None
         self.position_callback: Optional[Callable] = None
- codex/persist-settings-and-improve-reconnect-logic
 
         
     def connect_to_ibkr(
@@ -144,12 +134,21 @@ class IBKRInterface(EWrapper, EClient):
         client_id: int = DEFAULT_CLIENT_ID,
     ) -> bool:
         """Connect to IBKR TWS or Gateway"""
+        # Prevent reconnect attempts if already connected
+        if self.connected or self.isConnected():
+            logger.info("Already connected to IBKR")
+            return True
+
+        self.host = host
+        self.port = port
+        self.client_id = client_id
+
         try:
-            # Prevent reconnect attempts if already connected
-            if self.connected or self.isConnected():
-                logger.info("Already connected to IBKR")
-                return True
- main
+            self.connect_safe()
+            return True
+        except Exception as e:
+            logger.error("Failed to connect to IBKR: %s", e)
+            return False
 
     # ---- connection lifecycle ----
 
