@@ -3,6 +3,7 @@ Interactive Brokers (IBKR) Trading Interface
 Handles order execution and portfolio management for the TSLA trading bot
 """
 
+import os
 import time
 import threading
 from datetime import datetime, timedelta
@@ -43,7 +44,12 @@ except ImportError:
 from live_strategy_engine import TradingSignal, SignalType
 from trade_logging import TradeRecord
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ibkr_interface")
+
+DEFAULT_HOST = os.getenv("IBKR_HOST", "127.0.0.1")
+# 7496=LIVE TWS, 7497=PAPER TWS
+DEFAULT_PORT = int(os.getenv("IBKR_PORT", "7497"))
+DEFAULT_CLIENT_ID = int(os.getenv("IBKR_CLIENT_ID", "1"))
 
 class OrderStatus(Enum):
     PENDING = "PENDING"
@@ -91,6 +97,7 @@ class IBKRInterface(EWrapper, EClient):
         EWrapper.__init__(self)
         EClient.__init__(self, wrapper=self)
         self.parent = parent
+ codex/persist-settings-and-improve-reconnect-logic
 
         # Persisted connection settings
         self.host = host
@@ -102,6 +109,14 @@ class IBKRInterface(EWrapper, EClient):
         self._reconnect_timer = None
         self._connected_once = False
 
+
+        
+        # Connection settings
+        self.host = DEFAULT_HOST
+        self.port = DEFAULT_PORT
+        self.client_id = DEFAULT_CLIENT_ID
+        
+ main
         # Order management
         self.next_order_id = None
         self.orders: Dict[int, OrderInfo] = {}
@@ -119,6 +134,22 @@ class IBKRInterface(EWrapper, EClient):
         # Callbacks
         self.order_callback: Optional[Callable] = None
         self.position_callback: Optional[Callable] = None
+ codex/persist-settings-and-improve-reconnect-logic
+
+        
+    def connect_to_ibkr(
+        self,
+        host: str = DEFAULT_HOST,
+        port: int = DEFAULT_PORT,
+        client_id: int = DEFAULT_CLIENT_ID,
+    ) -> bool:
+        """Connect to IBKR TWS or Gateway"""
+        try:
+            # Prevent reconnect attempts if already connected
+            if self.connected or self.isConnected():
+                logger.info("Already connected to IBKR")
+                return True
+ main
 
     # ---- connection lifecycle ----
 
