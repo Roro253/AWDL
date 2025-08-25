@@ -128,6 +128,9 @@ class IBKRInterface(EWrapper, EClient):
         self.connected = False
         self.connection_lock = threading.Lock()
 
+        # Ready event to gate connection on nextValidId
+        self._ready = threading.Event()
+
         # Callbacks
         self.order_callback: Optional[Callable] = None
         self.position_callback: Optional[Callable] = None
@@ -158,9 +161,14 @@ class IBKRInterface(EWrapper, EClient):
 
     # ---- connection lifecycle ----
 
-    def connect_and_start(self):
+    def connect_and_start(self) -> bool:
         """Public entry: connect and request live market data type."""
-        self.connect_safe()
+        try:
+            self.connect_safe()
+            return True
+        except Exception as e:
+            logger.error("Failed to connect and start IBKR API: %s", e)
+            return False
 
     def connect_safe(self):
         if not isinstance(self.host, str) or not self.host:
@@ -185,6 +193,7 @@ class IBKRInterface(EWrapper, EClient):
             self.port,
             self.client_id,
         )
+        self._ready.clear()
         try:
             super().connect(self.host, self.port, self.client_id)
             self._connected_once = True
@@ -195,6 +204,10 @@ class IBKRInterface(EWrapper, EClient):
 
         thread = threading.Thread(target=self.run, name="IBKR-Reader", daemon=True)
         thread.start()
+
+        if not self._ready.wait(10):
+            logger.error("API not ready (no nextValidId)")
+            raise RuntimeError("API not ready (no nextValidId)")
 
     def schedule_reconnect(self):
         if self._reconnect_timer and self._reconnect_timer.is_alive():
@@ -256,6 +269,7 @@ class IBKRInterface(EWrapper, EClient):
     def nextValidId(self, orderId: OrderId):
         """Receive next valid order ID"""
         self.next_order_id = orderId
+        self._ready.set()
         logger.info(f"Next valid order ID: {orderId}")
     
     def orderStatus(self, orderId: OrderId, status: str, filled: float, 
