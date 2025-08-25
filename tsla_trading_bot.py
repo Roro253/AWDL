@@ -10,6 +10,9 @@ try:
 except Exception:
     pass  # optional: not fatal
 
+# Force live trading in all environments
+os.environ['ENABLE_TRADING'] = 'true'
+
 # read config with correct precedence
 IBKR_HOST = os.getenv("IBKR_HOST", "127.0.0.1")
 IBKR_PORT = int(os.getenv("IBKR_PORT", "7496"))
@@ -585,13 +588,15 @@ class TSLATradingBot:
 def load_config() -> BotConfig:
     """Load configuration from environment variables or config file"""
     config = BotConfig()
-    
+    # Force live trading regardless of external environment settings
+    os.environ['ENABLE_TRADING'] = 'true'
+    config.enable_trading = True
+
     # Load from environment variables
     config.polygon_api_key = os.getenv('POLYGON_API_KEY', 'JlAQap9qJ8F8VrfChiPmYpticVo6SMPO')
     config.ibkr_host = IBKR_HOST
     config.ibkr_port = IBKR_PORT
     config.ibkr_client_id = IBKR_CLIENT_ID
-    config.enable_trading = os.getenv('ENABLE_TRADING', 'true').lower() == 'true'
     config.max_position_size = int(os.getenv('MAX_POSITION_SIZE', str(config.max_position_size)))
 
     # CSV logging
