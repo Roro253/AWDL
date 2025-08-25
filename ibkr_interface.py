@@ -112,7 +112,6 @@ class IBKRInterface(EWrapper, EClient):
         self._reconnect_backoff = 2.0  # seconds
         self._max_backoff = 60.0
         self._reconnect_timer = None
-        self._connected_once = False
 
         # Order management
         self.next_order_id = None
@@ -128,8 +127,13 @@ class IBKRInterface(EWrapper, EClient):
         self.connected = False
         self.connection_lock = threading.Lock()
 
+        # Reentrancy guards and connection tracking
+        self._is_connecting = False
+        self._connected = False
+
         # Ready event to gate connection on nextValidId
-        self._ready = threading.Event()
+        self._api_ready = threading.Event()
+        self._reader_thread = None
 
         # Callbacks
         self.order_callback: Optional[Callable] = None
@@ -153,7 +157,7 @@ class IBKRInterface(EWrapper, EClient):
         self.client_id = client_id
 
         try:
-            self.connect_safe()
+            self.connect_and_start()
             return True
         except Exception as e:
             logger.error("Failed to connect to IBKR: %s", e)
@@ -161,53 +165,43 @@ class IBKRInterface(EWrapper, EClient):
 
     # ---- connection lifecycle ----
 
-    def connect_and_start(self) -> bool:
-        """Public entry: connect and request live market data type."""
+    def connect_and_start(self, max_wait_sec: int = 15) -> bool:
+        """Connect to IBKR and start reader threads with race protection."""
+        if self._connected or self._is_connecting:
+            logger.warning("connect_and_start() ignored; already connecting/connected")
+            return False
+        self._is_connecting = True
         try:
-            self.connect_safe()
+            self._api_ready.clear()
+            logger.info(
+                f"Connecting to IBKR at {self.host}:{self.port} with client ID {self.client_id}"
+            )
+            super().connect(self.host, self.port, clientId=self.client_id)
+
+            # Start reader before waiting for nextValidId
+            self._start_reader_threads_once()
+
+            # Kick off IDs; nextValidId will follow
+            self.reqIds(-1)
+
+            if not self._api_ready.wait(timeout=max_wait_sec):
+                raise RuntimeError("API not ready (no nextValidId)")
+            self._connected = True
+            self.connected = True
             return True
         except Exception as e:
             logger.error("Failed to connect and start IBKR API: %s", e)
             return False
+        finally:
+            self._is_connecting = False
 
-    def connect_safe(self):
-        if not isinstance(self.host, str) or not self.host:
-            logger.error(
-                "IBKR host is invalid or missing (got %r). Set IBKR_HOST env or config.",
-                self.host,
-            )
+    def _start_reader_threads_once(self):
+        if self._reader_thread and self._reader_thread.is_alive():
             return
-        if not isinstance(self.port, int):
-            try:
-                self.port = int(self.port)
-            except Exception:
-                logger.error(
-                    "IBKR port is invalid or missing (got %r). Set IBKR_PORT env or config.",
-                    self.port,
-                )
-                return
-
-        logger.info(
-            "Connecting to IBKR at %s:%s with client ID %s",
-            self.host,
-            self.port,
-            self.client_id,
+        self._reader_thread = threading.Thread(
+            target=self.run, name="IBKR-Reader", daemon=True
         )
-        self._ready.clear()
-        try:
-            super().connect(self.host, self.port, self.client_id)
-            self._connected_once = True
-        except Exception as e:
-            logger.error("Exception starting socket to IBKR: %s", e)
-            self.schedule_reconnect()
-            return
-
-        thread = threading.Thread(target=self.run, name="IBKR-Reader", daemon=True)
-        thread.start()
-
-        if not self._ready.wait(10):
-            logger.error("API not ready (no nextValidId)")
-            raise RuntimeError("API not ready (no nextValidId)")
+        self._reader_thread.start()
 
     def schedule_reconnect(self):
         if self._reconnect_timer and self._reconnect_timer.is_alive():
@@ -221,7 +215,7 @@ class IBKRInterface(EWrapper, EClient):
                 self.disconnect_safe()
             except Exception:
                 pass
-            self.connect_safe()
+            self.connect_and_start()
 
         self._reconnect_timer = threading.Timer(backoff, _reconnect)
         self._reconnect_timer.daemon = True
@@ -237,23 +231,23 @@ class IBKRInterface(EWrapper, EClient):
             logger.debug("disconnect_safe exception: %s", e)
         finally:
             self.connected = False
+            self._connected = False
 
     # ---- ibapi callbacks ----
 
     def connectAck(self):
         super().connectAck()
         logger.info("Connection acknowledged by IBKR")
-        self.connected = True
         try:
             self.reqMarketDataType(1)
             logger.info("Requested live market data subscription")
-            self.reqIds(-1)
         except Exception as e:
-            logger.error("Failed to request market data type / IDs: %s", e)
+            logger.error("Failed to request market data type: %s", e)
 
     def connectionClosed(self):
         logger.warning("IBKR reports connectionClosed()")
         self.connected = False
+        self._connected = False
         self.schedule_reconnect()
 
     def error(self, reqId: TickerId, errorCode: int, errorString: str, advancedOrderRejectJson=""):
@@ -269,7 +263,7 @@ class IBKRInterface(EWrapper, EClient):
     def nextValidId(self, orderId: OrderId):
         """Receive next valid order ID"""
         self.next_order_id = orderId
-        self._ready.set()
+        self._api_ready.set()
         logger.info(f"Next valid order ID: {orderId}")
     
     def orderStatus(self, orderId: OrderId, status: str, filled: float, 
