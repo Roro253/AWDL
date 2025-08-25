@@ -157,7 +157,7 @@ Current Streak: 2
 
 ### Recommended Settings for Beginners
 ```env
-ENABLE_TRADING=true        # Enable live trading
+ENABLE_TRADING=true        # Live trading always enabled
 MAX_POSITION_SIZE=3        # Small position size
 MAX_DAILY_TRADES=3          # Conservative trade limit
 MAX_DAILY_LOSS=200.0        # Reasonable loss limit
@@ -330,7 +330,7 @@ IBKR_PORT=7496  # 7496 for live trading, 7497 for paper trading
 IBKR_CLIENT_ID=1
 
 # Trading Settings
-ENABLE_TRADING=true  # Set to false for paper trading
+ENABLE_TRADING=true  # Live trading cannot be disabled
 MAX_POSITION_SIZE=3
 MAX_DAILY_TRADES=5
 MAX_DAILY_LOSS=500.0
@@ -498,16 +498,11 @@ Built-in risk management features:
 
 ## 🧪 Testing & Development
 
-### Paper Trading Mode
+### Live Trading Mode
 
-Always test with paper trading first:
+The bot now always runs in live trading mode and forces `ENABLE_TRADING=true`:
 
 ```bash
-# Set in .env file
-ENABLE_TRADING=true
-
-# Or set environment variable
-export ENABLE_TRADING=true
 python tsla_trading_bot.py
 ```
 
