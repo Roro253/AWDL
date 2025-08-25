@@ -129,11 +129,24 @@ class IBKRInterface(EWrapper, EClient):
         self.connection_lock = threading.Lock()
 
         # Ready event to gate connection on nextValidId
-        self._ready = threading.Event()
+        self._api_ready = threading.Event()
+
+        # Ensure the reader thread is only started once
+        self._reader_started = False
 
         # Callbacks
         self.order_callback: Optional[Callable] = None
         self.position_callback: Optional[Callable] = None
+
+
+    def _start_reader_threads_once(self):
+        """Start the IB API reader thread exactly once."""
+        if getattr(self, "_reader_started", False):
+            return
+        self._reader_started = True
+
+        t = threading.Thread(target=self.run, daemon=True, name="ibapi.run")
+        t.start()
 
         
     def connect_to_ibkr(
@@ -193,7 +206,7 @@ class IBKRInterface(EWrapper, EClient):
             self.port,
             self.client_id,
         )
-        self._ready.clear()
+        self._api_ready.clear()
         try:
             super().connect(self.host, self.port, self.client_id)
             self._connected_once = True
@@ -202,10 +215,9 @@ class IBKRInterface(EWrapper, EClient):
             self.schedule_reconnect()
             return
 
-        thread = threading.Thread(target=self.run, name="IBKR-Reader", daemon=True)
-        thread.start()
+        self._start_reader_threads_once()
 
-        if not self._ready.wait(10):
+        if not self._api_ready.wait(10):
             logger.error("API not ready (no nextValidId)")
             raise RuntimeError("API not ready (no nextValidId)")
 
@@ -268,9 +280,10 @@ class IBKRInterface(EWrapper, EClient):
     
     def nextValidId(self, orderId: OrderId):
         """Receive next valid order ID"""
+        super().nextValidId(orderId)
         self.next_order_id = orderId
-        self._ready.set()
-        logger.info(f"Next valid order ID: {orderId}")
+        logger.info("Received nextValidId; API ready")
+        self._api_ready.set()
     
     def orderStatus(self, orderId: OrderId, status: str, filled: float, 
                    remaining: float, avgFillPrice: float, permId: int,
