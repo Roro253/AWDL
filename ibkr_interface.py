@@ -215,6 +215,23 @@ class IBKRInterface(EWrapper, EClient):
                 self.disconnect_safe()
             except Exception:
                 pass
+            # Reuse existing connection settings or fall back to environment
+            host = self.host or os.getenv("IBKR_HOST", DEFAULT_HOST)
+            port = self.port or int(os.getenv("IBKR_PORT", DEFAULT_PORT))
+            client_id = self.client_id or int(
+                os.getenv("IBKR_CLIENT_ID", DEFAULT_CLIENT_ID)
+            )
+
+            # Ensure we have a valid host before attempting to reconnect
+            if not host:
+                logger.error(
+                    "IBKR host is invalid or missing (got %s). Set IBKR_HOST env or config.",
+                    host,
+                )
+                return
+
+            # Update connection parameters and reconnect
+            self.host, self.port, self.client_id = host, port, client_id
             self.connect_and_start()
 
         self._reconnect_timer = threading.Timer(backoff, _reconnect)
