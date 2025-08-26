@@ -186,11 +186,15 @@ class IBKRInterface(EWrapper, EClient):
 
             if not self._api_ready.wait(timeout=max_wait_sec):
                 raise RuntimeError("API not ready (no nextValidId)")
+
             self._connected = True
             self.connected = True
+            self._reconnect_backoff = 2.0  # reset backoff after success
             return True
         except Exception as e:
             logger.error("Failed to connect and start IBKR API: %s", e)
+            # Ensure a reconnect attempt is scheduled if connection fails
+            self.schedule_reconnect()
             return False
         finally:
             self._is_connecting = False
