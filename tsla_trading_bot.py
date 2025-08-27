@@ -168,8 +168,9 @@ class TSLATradingBot:
                     session_id=self.session_id,
                 )
                 if not self.ib.connect_and_start():
-                    logger.error("Failed to connect to IBKR")
-                    return False
+                    logger.warning(
+                        "Initial IBKR connection failed; retrying in background"
+                    )
             else:
                 logger.info("Trading disabled - running in simulation mode")
             
