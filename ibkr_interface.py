@@ -133,11 +133,27 @@ class IBKRInterface(EWrapper, EClient):
 
         # Ready event to gate connection on nextValidId
         self._api_ready = threading.Event()
+ codex/fix-ib-api-message-loop-processing
+
+        # Ensure the reader thread is only started once
+        self._reader_started = False
+
         self._reader_thread = None
+ main
 
         # Callbacks
         self.order_callback: Optional[Callable] = None
         self.position_callback: Optional[Callable] = None
+
+
+    def _start_reader_threads_once(self):
+        """Start the IB API reader thread exactly once."""
+        if getattr(self, "_reader_started", False):
+            return
+        self._reader_started = True
+
+        t = threading.Thread(target=self.run, daemon=True, name="ibapi.run")
+        t.start()
 
         
     def connect_to_ibkr(
@@ -205,7 +221,24 @@ class IBKRInterface(EWrapper, EClient):
         self._reader_thread = threading.Thread(
             target=self.run, name="IBKR-Reader", daemon=True
         )
+ codex/fix-ib-api-message-loop-processing
+        self._api_ready.clear()
+        try:
+            super().connect(self.host, self.port, self.client_id)
+            self._connected_once = True
+        except Exception as e:
+            logger.error("Exception starting socket to IBKR: %s", e)
+            self.schedule_reconnect()
+            return
+
+        self._start_reader_threads_once()
+
+        if not self._api_ready.wait(10):
+            logger.error("API not ready (no nextValidId)")
+            raise RuntimeError("API not ready (no nextValidId)")
+
         self._reader_thread.start()
+ main
 
     def schedule_reconnect(self):
         if self._reconnect_timer and self._reconnect_timer.is_alive():
@@ -287,9 +320,14 @@ class IBKRInterface(EWrapper, EClient):
     
     def nextValidId(self, orderId: OrderId):
         """Receive next valid order ID"""
+        super().nextValidId(orderId)
         self.next_order_id = orderId
+ codex/fix-ib-api-message-loop-processing
+        logger.info("Received nextValidId; API ready")
+        self._api_ready.set()
         self._api_ready.set()
         logger.info(f"Next valid order ID: {orderId}")
+ main
     
     def orderStatus(self, orderId: OrderId, status: str, filled: float, 
                    remaining: float, avgFillPrice: float, permId: int,
