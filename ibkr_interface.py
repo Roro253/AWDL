@@ -215,6 +215,9 @@ class IBKRInterface(EWrapper, EClient):
         logger.warning("IBKR connection lost. Attempting to reconnect in %.1fs...", backoff)
 
         def _reconnect():
+            if self._is_connecting:
+                self.schedule_reconnect()
+                return
             try:
                 self.disconnect_safe()
             except Exception:
@@ -236,7 +239,8 @@ class IBKRInterface(EWrapper, EClient):
 
             # Update connection parameters and reconnect
             self.host, self.port, self.client_id = host, port, client_id
-            self.connect_and_start()
+            if not self._is_connecting:
+                self.connect_and_start()
 
         self._reconnect_timer = threading.Timer(backoff, _reconnect)
         self._reconnect_timer.daemon = True
