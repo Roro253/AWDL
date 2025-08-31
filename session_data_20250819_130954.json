@@ -1,0 +1,24 @@
+{
+  "timestamp": "2025-08-19T13:09:54.198067",
+  "trade_history": [
+    {
+      "timestamp": "2025-07-28 08:20:00-04:00",
+      "signal_type": "BUY",
+      "quantity": 10,
+      "price": 330.195,
+      "reason": "Entry: Pullback",
+      "real_trade": false
+    }
+  ],
+  "performance_stats": {
+    "total_trades": 1,
+    "winning_trades": 0,
+    "losing_trades": 0,
+    "total_pnl": 0.0,
+    "win_rate": 0.0
+  },
+  "daily_stats": {
+    "daily_trades": 0,
+    "daily_pnl": 0.0
+  }
+}

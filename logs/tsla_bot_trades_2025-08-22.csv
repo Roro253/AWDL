@@ -1,0 +1,2 @@
+ts_utc,ts_local,session_id,symbol,side,qty,price,order_id,trade_id,reason,pnl_realized,position_after,tags
+2025-08-22T23:19:35Z,2025-08-22 19:19:35 ET,20250822T173043Z,TSLA,BUY,10,341.1,,,Entry: UT_Bot,,10,paper

@@ -1,0 +1,4 @@
+ts_utc,ts_local,session_id,symbol,total_trades,wins,losses,flat_trades,win_rate,gross_pnl,net_pnl,max_drawdown,open_position,open_unrealized,notes
+2025-08-25T16:22:41Z,2025-08-25 12:22:41 ET,20250825T162240Z,TSLA,0,0,0,0,0.0,0.0,0.0,0.0,0,0.0,
+2025-08-25T16:23:26Z,2025-08-25 12:23:26 ET,20250825T162325Z,TSLA,0,0,0,0,0.0,0.0,0.0,0.0,0,0.0,
+2025-08-25T16:26:28Z,2025-08-25 12:26:28 ET,20250825T162325Z,TSLA,0,0,0,0,0.0,0.0,0.0,0.0,0,0.0,

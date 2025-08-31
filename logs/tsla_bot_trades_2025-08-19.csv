@@ -1,0 +1,2 @@
+ts_utc,ts_local,session_id,symbol,side,qty,price,order_id,trade_id,reason,pnl_realized,position_after,tags
+2025-08-19T19:42:02Z,2025-08-19 15:42:02 ET,20250819T194201Z,TSLA,BUY,10,330.195,,,Entry: Pullback,,10,paper

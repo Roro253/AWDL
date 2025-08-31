@@ -127,10 +127,11 @@ class TerminalMonitor:
         print(f"{Fore.CYAN}{'-'*30}")
         
         if self.market_status:
-            # Current price with color coding
-            current_price = self.market_status.get('current_price', 0)
+            # Current price with color coding (handle None safely)
+            current_price = self.market_status.get('current_price')
+            if current_price is None:
+                current_price = 0.0
             price_color = Fore.GREEN if current_price > 0 else Fore.WHITE
-            
             print(f"TSLA Price: {price_color}{Style.BRIGHT}${current_price:.2f}")
             
             # Market hours status
@@ -428,4 +429,3 @@ def test_terminal_monitor():
 
 if __name__ == "__main__":
     test_terminal_monitor()
-
